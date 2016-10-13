@@ -1,3 +1,4 @@
+'use strict';
 global.THREE = require('three');
 var THREE = global.THREE;
 var Physijs = require('./libs/physi.js');
@@ -9,7 +10,7 @@ stats.setMode(2);
 
 var createScene = require('scene-template');
 var createLoop = require('raf-loop');
-var gamePlayer = require('./gamePlayer');
+var GamePlayer = require('./GamePlayer');
 var createBox = require('./createObj').createBox;
 var createSphere = require('./createObj').createSphere;
 
@@ -138,17 +139,56 @@ gameCore.prototype.start = function() {
   let { scene ,renderer, camera, updateControls } = this;
   // two players for now
   let index = 0;
-  this.players = {
-    self: new gamePlayer({
-      scene, 
-      renderer, 
-      camera, 
-      index
-    })
-    // other: new gampePlayer({
-    //   scene, render, camera, ++index
-    // })
-  };
+  if(!this.server) {
+    this.players = {
+      self: new GamePlayer(Object.assign(this, {
+        scene, 
+        renderer, 
+        camera, 
+        index
+      }), undefined)
+      // other: new gampePlayer({
+      //   scene, render, camera, ++index
+      // })
+    };  
+    this.ghosts = {
+      server_pos_self: new GamePlayer(Object.assign(this, {
+        scene, 
+        renderer, 
+        camera, 
+        index,
+        visible: false
+      }), undefined),
+      server_pos_other: new GamePlayer(Object.assign(this, {
+        scene, 
+        renderer, 
+        camera, 
+        index,
+        visible: false
+      }), undefined),
+      pos_other: new GamePlayer(Object.assign(this, {
+        scene, 
+        renderer, 
+        camera, 
+        index,
+        visible: false
+      }), undefined)
+    }
+  }
+  else {
+    this.players = {
+    self: new GamePlayer(this, this.instance.player_host, {
+        scene, 
+        renderer, 
+        camera, 
+        index
+      })
+      // other: new gampePlayer(this, this.instance.player_client{
+      //   scene, render, camera, ++index
+      // })
+    };  
+  }
+  
   
   const onStep = () => {
     stats.begin();

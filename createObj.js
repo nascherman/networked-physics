@@ -3,6 +3,7 @@ var Physijs = require('./libs/physi.js');
 
 const ACCELERATION = 3;
 const DEFAULT_COLOR = 0xaaaaaa;
+const PLAYER_GROUP = 2;
 
 const createBox = function(opts, scene) {
   let _this = this;
@@ -33,6 +34,11 @@ const createBox = function(opts, scene) {
      }
    });
   }
+  else {
+    box.physics.collision_mask = PLAYER_GROUP;
+    box.physics.collision_groups = PLAYER_GROUP;
+  }
+  box.visible = opts.visible === false ? opts.visible : true;
   scene.add(box);
   return box;
 };
