@@ -27,18 +27,14 @@ global.keys = [];
 function gameCore(opts) {
   Object.assign(this, opts);
   this.server = this.instance !== undefined;
-
+  this.grid = [];
 
 }
-
-gameCore.prototype.calcAngularMomentum = function(cameraRotation, acceleration) {
-
-};
 
 gameCore.prototype.initGrid = function(scene) {
   for(var i = -PLANE_WIDTH/2 + MARGIN; i < PLANE_WIDTH/2; i += SPACING) {
     for(var j = -PLANE_DEPTH/2 + MARGIN; j < PLANE_DEPTH/2; j += SPACING) {
-      createBox({
+      this.grid.push(createBox({
         x: i,
         y: 3,
         z: j,
@@ -46,7 +42,7 @@ gameCore.prototype.initGrid = function(scene) {
         width: GRID_SIZE,
         height: GRID_SIZE,
         mass: 0.01
-      }, scene);
+      }, scene));
     }
   }
 };
@@ -188,19 +184,88 @@ gameCore.prototype.start = function() {
       // })
     };  
   }
-  
-  
-  const onStep = () => {
+  // physics integration value
+  this._pdt = 0.0001;                 //The physics update delta time
+  this._pdte = new Date().getTime();  //The physics update last delta time
+  //A local timer for precision on server and client
+  this.local_time = 0.016;            //The local timer
+  this._dt = new Date().getTime();    //The local timer delta
+  this._dte = new Date().getTime();   //The local timer last frame time
+
+  this.createPhysicsSimulation();
+  this.createTimer();
+
+  if(!this.server) {
+    //TODO define these functions
+    this.clientCreateConfiguration();
+    this.server_updates = [];
+    this.clientConnectToServer();
+    this.clientCreatePingTimer();
+
+    /* TODO set color with local storage here eg - maybe also create debug ui
+      this.color = localStorage.getItem('color') || '#cc8822' ;
+      localStorage.setItem('color', this.color);
+      this.players.self.color = this.color;
+    */
+  }
+  else {
+    this.server_time = 0;
+    this.lastState = {};
+  }
+};
+
+gameCore.prototype.clientCreateConfiguration = function() {
+
+}
+
+gameCore.prototype.clientConnectToServer = function() {
+
+}
+
+gameCore.prototype.clientCreatePingTimer = function() {
+
+}
+
+gameCore.prototype.serverUpdatePhysics = function() {
+  // this.players.self.
+}
+
+gameCore.prototype.clientUpdatePhysics = function() {
+  this.players.self.state_time = this.local_time;
+  this.players.self.old_state = this.players.self.curr_state;
+  this.players.self.curr_state = this.players.self.player.position;
+}
+
+gameCore.prototype.onStep = function() {
+    let { scene, camera, updateControls, renderer } = this;
+    this._pdt = (new Date().getTime() - this._pdte)/1000.0;
+    this._pdte = new Date().getTime();
     stats.begin();
     updateControls();
     this.players.self.handleKeyPress();
     renderer.render(scene, camera);
+    setTimeout( scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) ), PHYSICS_FRAMERATE);
 
+    if(this.server) {
+      this.serverUpdatePhysics();
+    }
+    else {
+      this.clientUpdatePhysics();
+    }
 
-    setTimeout( scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, onStep ), PHYSICS_FRAMERATE);
     stats.end();
   };
-  scene.step(PHYSICS_FRAMERATE / 1000, undefined, onStep );
-};
+
+gameCore.prototype.createTimer = function() {
+  setInterval(function() {
+    this._dt = new Date().getTime() - this._dte;
+    this._dte = new Date().getTime();
+    this.local_time += this._dt/1000.0;
+  }.bind(this), 4); 
+}
+
+gameCore.prototype.createPhysicsSimulation = function() {
+  this.onStep();
+}
 
 module.exports = gameCore;

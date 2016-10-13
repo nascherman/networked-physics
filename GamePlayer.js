@@ -23,10 +23,20 @@ function GamePlayer(opts, playerInstance) {
     teamColor: this.teamColor,
     index: this.index
   }, opts.scene);
+  this.old_state = {
+    x: opts.x,
+    y: opts.y,
+    z: opts.z
+  };
+  this.curr_state = this.old_state;
+  this.state_time = new Date().getTime();
+  this.inputs = [];
+
+  //could also set up initial position at this point; 
 }
 
+// change angular velocity based on camera rotation from original position.
 const calcAngularMomentum = (initialRotation, cameraRotation, acceleration) => {
-  // console.log(acceleration * cameangleAcceleration = angleAcceleration > 0 ? angleAcceleration + (acceleration/2 - angleAcceleration) : angleAcceleration - (acceleration/2 - angleAcceleration);raRotation/initialRotation);
   let offsetAngle = -(cameraRotation - initialRotation);
   let angleAcceleration, rotationAcceleration;
   if(offsetAngle < 90) {
@@ -47,8 +57,6 @@ const calcAngularMomentum = (initialRotation, cameraRotation, acceleration) => {
     rotationAcceleration = angleAcceleration > 0 ? acceleration - angleAcceleration : acceleration + angleAcceleration;
     rotationAcceleration= - rotationAcceleration;
   }
-  
-  console.log(angleAcceleration, rotationAcceleration);
   return {
     angleAcceleration: angleAcceleration,
     rotationAcceleration: rotationAcceleration
@@ -77,9 +85,6 @@ GamePlayer.prototype.handleKeyPress = function() {
   else if (keys[68]) {
     vec = new THREE.Vector3(rotationAcceleration, 0 , angleAcceleration);
     box.physics.angular_velocity = vec;
-  }
-  else {
- //   box.physics.angular_velocity = new THREE.Vector3(0, 0, 0);
   }
 };
 
