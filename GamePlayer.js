@@ -79,11 +79,11 @@ GamePlayer.prototype.handleKeyPress = function() {
     box.physics.angular_velocity = vec;
   }
   else if (keys[65]) {
-    vec = new THREE.Vector3(-rotationAcceleration, 0, -angleAcceleration);
+    vec = new THREE.Vector3(rotationAcceleration, 0, -angleAcceleration);
     box.physics.angular_velocity = vec;
   }
   else if (keys[68]) {
-    vec = new THREE.Vector3(rotationAcceleration, 0 , angleAcceleration);
+    vec = new THREE.Vector3(-rotationAcceleration, 0 , angleAcceleration);
     box.physics.angular_velocity = vec;
   }
 };

@@ -1,5 +1,6 @@
 'use strict';
 global.THREE = require('three');
+var io = require('socket.io-client');
 var THREE = global.THREE;
 var Physijs = require('./libs/physi.js');
 var loader = new THREE.TextureLoader();
@@ -21,6 +22,9 @@ const MARGIN = 2.5;
 const GRID_SIZE = 1;
 const SEGMENTS = 10;
 const PHYSICS_FRAMERATE = 1000 / 60;
+
+const SERVER_URL = 'http://localhost';
+const SERVER_PORT = 4004;
 
 global.keys = [];
 
@@ -215,46 +219,182 @@ gameCore.prototype.start = function() {
 };
 
 gameCore.prototype.clientCreateConfiguration = function() {
+  this.show_help = false;             //Whether or not to draw the help text
+  this.naive_approach = false;        //Whether or not to use the naive approach
+  this.show_server_pos = false;       //Whether or not to show the server position
+  this.show_dest_pos = false;         //Whether or not to show the interpolation goal
+  this.client_predict = true;         //Whether or not the client is predicting input
+  this.input_seq = 0;                 //When predicting client inputs, we store the last input as a sequence number
+  this.client_smoothing = true;       //Whether or not the client side prediction tries to smooth things out
+  this.client_smooth = 25;            //amount of smoothing to apply to client update dest
+  this.net_latency = 0.001;           //the latency between the client and the server (ping/2)
+  this.net_ping = 0.001;              //The round trip time from here to the server,and back
+  this.last_ping_time = 0.001;        //The time we last sent a ping
+  this.fake_lag = 0;                //If we are simulating lag, this applies only to the input client (not others)
+  this.fake_lag_time = 0;
+  this.net_offset = 100;              //100 ms latency between server and client interpolation for other clients
+  this.buffer_size = 2;               //The size of the server history to keep for rewinding/interpolating.
+  this.target_time = 0.01;            //the time where we want to be in the server timeline
+  this.oldest_tick = 0.01;            //the last time tick we have available in the buffer
+  this.client_time = 0.01;            //Our local 'clock' based on server time - client interpolation(net_offset).
+  this.server_time = 0.01;            //The time the server reported it was at, last we heard from it
+  this.dt = 0.016;                    //The time that the last frame took to run
+  this.fps = 0;                       //The current instantaneous fps (1/this.dt)
+  this.fps_avg_count = 0;             //The number of samples we have taken for fps_avg
+  this.fps_avg = 0;                   //The current average fps displayed in the debug UI
+  this.fps_avg_acc = 0;               //The accumulation of the last avgcount fps samples
+  this.lit = 0;
+  this.llt = new Date().getTime();
+};
 
+gameCore.prototype.clientOnDisconnect = function(data) {
+  this.players.self.state = 'not-connected';
+  this.players.self.online = false;
+
+  //set color or other stateful info
+};
+
+// a function to reset the player and grid positions
+gameCore.prototype.clientResetPosition = function() {
+
+};
+
+gameCore.prototype.clientOnReadyGame = function(data) {
+  let server_time = parseFloat(data.replace('-', '.'));
+  // would need to update for > 2 players
+  let player_host = this.players.self.host ? this.players.self : this.players.other;
+  let player_client = this.players.self.host ? this.players.other : this.players.self;
+
+  this.local_time = server_time + this.net_latency;
+  console.log('server time is ' + this.local_time);
+
+  // could set colors here
+  // player_host.info_color = '#2288cc';
+  // player_client.info_color = '#cc8822';  
+
+  this.players.self.state = 'YOU ' + this.players.self.state;
+  // this.socket.send('c.' + this.players.self.color || 0xff0000);
 }
+
+gameCore.prototype.clientOnJoinGame = function(data) {
+  this.players.self.host = false;
+  this.players.self.state = 'connected.joined.waiting';
+  //maybe set color 
+  this.clientResetPositions();
+}
+
+gameCore.prototype.clientOnHostGame = function(data) {
+  let server_time = parseFloat(data.replace('-', '.'));
+  this.local_time = server_time + this.net_latency;
+  this.players.self.host = true;
+  this.players.self.state = 'hosting.waiting for player';
+  // maybe set color
+  //this.players.self.info_color = ...
+
+  this.clientResetPositions();
+};
+
+gameCore.prototype.clientOnPing = function(data) {
+  this.net_ping = new Date().getTime() - parseFloat(data);
+  this.net_latency = this.net_ping/2;
+};
+
+gameCore.prototype.clientOnConnected = function(data) {
+  this.players.self.id = data.id;
+  // this.players.self.info_color = 0xff0000;
+  this.players.self.state = 'connected';
+  this.players.self.online = true;
+};
+
+gameCore.prototype.clientOnNetMessage = function(data) {
+  let commands = data.split('.');
+  let command = commands[0];
+  let subCommand = commands[1] || null;
+  let commandData = commands[2] || null;
+
+  switch(command) {
+    case 's': //server message
+      switch(subCommand) {
+        case 'h':
+          this.clientOnHostGame(commandData);
+          break;
+        case 'j':
+          this.clientOnJoinGame(commandData);
+          break;
+        case 'r':
+          this.clientOnReadyGame(commandData);
+          break;
+        case 'e':
+          this.clientOnDisconnect(commandData);
+          break;
+        case 'p':
+          this.clientOnPing(commandData);
+          break;
+        // case 'c':
+        //   this.clientOnOtherClientColorChange(commandData);
+        //   break;
+      }
+      break;
+  }
+};
 
 gameCore.prototype.clientConnectToServer = function() {
-
-}
+  // initial definition
+  this.socket = io.connect(SERVER_URL + ':' + SERVER_PORT);
+  let { socket } = this;
+  socket.on('connect', () => {
+    this.players.self.state = 'connecting';
+  });
+  socket.on('disconnect', (d) => this.clientOnDisconnect(d));
+  socket.on('onserverupdate', (d) => this.clientOnServerUpdateReceived());
+  socket.on('onconnected', (d) => this.clientOnConnected(d));
+  socket.on('error', (d) => this.clientOnDisconnect(d));
+  socket.on('message', (d) => this.clientOnNetMessage(d));
+};
 
 gameCore.prototype.clientCreatePingTimer = function() {
-
-}
+  const { socket } = this;
+  setInterval(() => {
+    this.last_ping_time = new Date().getTime();// - this.fake_lag;
+    socket.send('p.' + (this.last_ping_time));
+  }, 1000);
+};
 
 gameCore.prototype.serverUpdatePhysics = function() {
-  // this.players.self.
-}
+  // player one
+  this.players.self.old_state = this.players.self.curr_state;
+  this.players.self.curr_state = this.players.self.player.position;
+
+  // TODO player 2+
+
+  this.players.self.inputs = [];
+  //player 2 inputs
+  // this.players.other.inputs = [];
+};
 
 gameCore.prototype.clientUpdatePhysics = function() {
   this.players.self.state_time = this.local_time;
   this.players.self.old_state = this.players.self.curr_state;
   this.players.self.curr_state = this.players.self.player.position;
-}
+};
 
 gameCore.prototype.onStep = function() {
-    let { scene, camera, updateControls, renderer } = this;
-    this._pdt = (new Date().getTime() - this._pdte)/1000.0;
-    this._pdte = new Date().getTime();
-    stats.begin();
-    updateControls();
-    this.players.self.handleKeyPress();
-    renderer.render(scene, camera);
-    setTimeout( scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) ), PHYSICS_FRAMERATE);
-
-    if(this.server) {
-      this.serverUpdatePhysics();
-    }
-    else {
-      this.clientUpdatePhysics();
-    }
-
-    stats.end();
-  };
+  let { scene, camera, updateControls, renderer } = this;
+  this._pdt = (new Date().getTime() - this._pdte)/1000.0;
+  this._pdte = new Date().getTime();
+  stats.begin();
+  updateControls();
+  this.players.self.handleKeyPress();
+  renderer.render(scene, camera);
+  setTimeout( scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) ), PHYSICS_FRAMERATE);
+  if(this.server) {
+    this.serverUpdatePhysics();
+  }
+  else {
+    this.clientUpdatePhysics();
+  }
+  stats.end();
+};
 
 gameCore.prototype.createTimer = function() {
   setInterval(function() {
@@ -262,10 +402,10 @@ gameCore.prototype.createTimer = function() {
     this._dte = new Date().getTime();
     this.local_time += this._dt/1000.0;
   }.bind(this), 4); 
-}
+};
 
 gameCore.prototype.createPhysicsSimulation = function() {
   this.onStep();
-}
+};
 
 module.exports = gameCore;
