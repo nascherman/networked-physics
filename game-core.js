@@ -3,11 +3,13 @@ global.THREE = require('three');
 var io = require('socket.io-client');
 var THREE = global.THREE;
 var Physijs = require('./libs/physi.js');
-var loader = new THREE.TextureLoader();
-var Stats = require('stats-js');
-var stats = new Stats();
 
-stats.setMode(2);
+if(!global.isServer) {
+  var loader = new THREE.TextureLoader();
+  var Stats = require('stats-js');
+  var stats = new Stats();
+  stats.setMode(2);
+} 
 
 var createScene = require('scene-template');
 var createLoop = require('raf-loop');
@@ -32,7 +34,6 @@ function gameCore(opts) {
   Object.assign(this, opts);
   this.server = this.instance !== undefined;
   this.grid = [];
-
 }
 
 gameCore.prototype.initGrid = function(scene) {
@@ -57,7 +58,7 @@ gameCore.prototype.initScene = function() {
 
   var opts = {
     renderer: {
-      antialias: true
+      antialias: true,
     },
     scene: scene,
     controls: {
@@ -73,12 +74,23 @@ gameCore.prototype.initScene = function() {
       ambient
     ]
   };
+  if(global.isServer) opts.renderer.context = require('gl')(100, 100);
   // Create our basic ThreeJS application
-  var {
-    renderer,
-    camera,
-    updateControls
-  } = createScene(opts, THREE);
+  if(!global.isServer) {
+    var {
+      renderer,
+      camera,
+      updateControls
+    } = createScene(opts, THREE);  
+  } 
+  else {
+    var {
+      renderer,
+      camera,
+    } = createServerScene(opts, THREE);
+  }
+  
+  console.log("CREATED")
   this.renderer = renderer;
   this.camera = camera;
   this.scene = scene;
@@ -89,14 +101,19 @@ gameCore.prototype.initScene = function() {
   window.scene = scene;
   // camera.add(light);
   renderer.setClearColor(0xffffff);
- 
-  var floorMaterial = new THREE.MeshLambertMaterial({ map: loader.load('/assets/lush-grass.jpg') });
+  
+  let floorMaterial;
+  if(global.isServer) {
+    floorMaterial = new THREE.MeshBasicMaterial({});
+  }
+  else {
+    floorMaterial = new THREE.MeshLambertMaterial({ map: loader.load('/assets/lush-grass.jpg') });
+    floorMaterial.map.wrapS = floorMaterial.map.wrapT = THREE.RepeatWrapping;
+    floorMaterial.map.repeat.set(2.5,2.5);
+  }
     // 0.4, //high friction
     // 0.1 //low restitution
   
-  floorMaterial.map.wrapS = floorMaterial.map.wrapT = THREE.RepeatWrapping;
-  floorMaterial.map.repeat.set(2.5,2.5);
-
   var ground = new Physijs.Box(
     new THREE.BoxGeometry(PLANE_WIDTH, 1, PLANE_DEPTH),
     floorMaterial,
@@ -122,24 +139,28 @@ gameCore.prototype.initScene = function() {
 };
 
 gameCore.prototype.start = function() {
-  stats.domElement.style.position = 'absolute';
-  stats.domElement.style.left = '0px';
-  stats.domElement.style.top = '0px'; 
-  document.body.appendChild( stats.domElement );
+  if(stats) {
+    stats.domElement.style.position = 'absolute';
+    stats.domElement.style.left = '0px';
+    stats.domElement.style.top = '0px'; 
+    document.body.appendChild( stats.domElement );
+  }
   
-  window.addEventListener('keydown', (e) => {
-    keys[e.keyCode] = true;
-  });
-
-  window.addEventListener('keyup', (e) => {
-    keys[e.keyCode] = false;
-  });
+  if(!global.isServer) {
+    window.addEventListener('keydown', (e) => {
+      keys[e.keyCode] = true;
+    });
+  
+    window.addEventListener('keyup', (e) => {
+      keys[e.keyCode] = false;
+    });  
+  }
 
   this.initScene();
   let { scene ,renderer, camera, updateControls } = this;
   // two players for now
   let index = 0;
-  if(!this.server) {
+  if(!this.server && !global.isServer) {
     this.players = {
       self: new GamePlayer(Object.assign(this, {
         scene, 
@@ -177,12 +198,12 @@ gameCore.prototype.start = function() {
   }
   else {
     this.players = {
-    self: new GamePlayer(this, this.instance.player_host, {
+      self: new GamePlayer(Object.assign(this,  {
         scene, 
         renderer, 
         camera, 
         index
-      })
+      }), undefined)//this.instance.player_host)
       // other: new gampePlayer(this, this.instance.player_client{
       //   scene, render, camera, ++index
       // })
@@ -198,7 +219,7 @@ gameCore.prototype.start = function() {
 
   this.createPhysicsSimulation();
   this.createTimer();
-
+  console.log('done starting game');
   if(!this.server) {
     //TODO define these functions
     this.clientCreateConfiguration();
@@ -342,6 +363,7 @@ gameCore.prototype.clientConnectToServer = function() {
   // initial definition
   this.socket = io.connect(SERVER_URL + ':' + SERVER_PORT);
   let { socket } = this;
+
   socket.on('connect', () => {
     this.players.self.state = 'connecting';
   });
@@ -372,6 +394,10 @@ gameCore.prototype.serverUpdatePhysics = function() {
   // this.players.other.inputs = [];
 };
 
+gameCore.prototype.clientUpdate = function() {
+  // do client update 
+};
+
 gameCore.prototype.clientUpdatePhysics = function() {
   this.players.self.state_time = this.local_time;
   this.players.self.old_state = this.players.self.curr_state;
@@ -382,18 +408,18 @@ gameCore.prototype.onStep = function() {
   let { scene, camera, updateControls, renderer } = this;
   this._pdt = (new Date().getTime() - this._pdte)/1000.0;
   this._pdte = new Date().getTime();
-  stats.begin();
-  updateControls();
+  if(!global.isServer) stats.begin();
+  if(updateControls) updateControls();
   this.players.self.handleKeyPress();
   renderer.render(scene, camera);
-  setTimeout( scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) ), PHYSICS_FRAMERATE);
-  if(this.server) {
+  setTimeout(scene.step.bind(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) ), PHYSICS_FRAMERATE);
+  if(global.isServer) {
     this.serverUpdatePhysics();
   }
   else {
     this.clientUpdatePhysics();
+    stats.end();
   }
-  stats.end();
 };
 
 gameCore.prototype.createTimer = function() {
@@ -407,5 +433,58 @@ gameCore.prototype.createTimer = function() {
 gameCore.prototype.createPhysicsSimulation = function() {
   this.onStep();
 };
+
+gameCore.prototype.update = function(time) {
+  this.dt = this.lastFrameTime ? (time - this.lastFrameTime/1000).fixed() : 0.016;
+  this.lastFrameTime = time;
+  if(global.isServer) {
+    this.serverUpdate();
+  }
+  else {
+    this.clientUpdate();
+  }
+
+  this.updateId =  window.requestAnimationFrame( this.update.bind(this), this.viewport);
+};
+
+gameCore.prototype.serverUpdate = function() {
+  this.server_time = this.local_time;
+
+  this.lastState = {
+  //  hp: this.players.self.pos
+  };
+
+  if(this.players.self.instance) {
+    this.players.self.instance.emit('onserverupdate', this.lastState);
+  }
+
+  if(this.players.other.instance) {
+    this.players.other.instance.emit('onserverupdate', this.lastState);
+  }
+};
+
+//server side we set the 'game_core' class to a global type, so that it can use it anywhere.
+if(global.isServer) {
+    module.exports = global.gameCore = gameCore;
+}
+
+function createServerScene(opts, THREE) {
+  const assign = require('object-assign');
+  const dpr = window.devicePixelRatio;
+  const renderer = new THREE.WebGLRenderer(assign({
+    antialias: true // default enabled
+  }, opts.renderer));
+  const canvas = renderer.domElement;
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.01, 1000);
+  const target = new THREE.Vector3();
+  // 3D scene
+  const scene = new THREE.Scene();
+  return {
+    camera,
+    scene,
+    renderer,
+    canvas
+  };
+}
 
 module.exports = gameCore;
