@@ -32,13 +32,20 @@ sio.on('connection', function(socketClient) {
   let currGame = new global.gameCore({
     server: true
   });
-  currGame.start();
+  
 
   gameServer.findGame(socketClient);
   
   socketClient.on('message', function(message) {
     console.log(message, socketClient.userid);
   });
+
+  socketClient.on('disconnect', function() {
+    console.log('\t socket.io:: client disconnected ' + socketClient.userid + ' ' + socketClient.game_id);
+    if(socketClient.game && socketClient.game.id) {
+      gameServer.endGame(socketClient.game.id, socketClient.userid);
+    }
+  })
 });
 // sio.sockets.on('connection', function (client) {
 //   //Generate a new UUID, looks something like

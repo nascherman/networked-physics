@@ -79,6 +79,7 @@ gameServer.createGame = (player) => {
   gameServer.games[newGame.id] = newGame;
   gameServer.game_count++;
   newGame.gameCore = new gameCore(newGame);
+  newGame.gameCore.start();
   newGame.gameCore.update( new Date().getTime());
   player.send('s.h.' + String(newGame.gameCore.local_time).replace('.', '-'));
   console.log('server host at  ' + newGame.gameCore.local_time);
@@ -107,7 +108,7 @@ gameServer.endGame = (gameid, userid) => {
         }
       }
     }
-    delete his.games[gameid];
+    delete gameServer.games[gameid];
     gameServer.game_count--;
     gameServer.log('game removed. there are now ' + gameServer.game_count + ' games' );
   }

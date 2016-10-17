@@ -4,6 +4,8 @@ var io = require('socket.io-client');
 var THREE = global.THREE;
 var Physijs = require('./libs/physi.js');
 
+// const NO_STATS = false;
+
 if(!global.isServer) {
   var loader = new THREE.TextureLoader();
   var Stats = require('stats-js');
@@ -139,7 +141,7 @@ gameCore.prototype.initScene = function() {
 };
 
 gameCore.prototype.start = function() {
-  if(stats) {
+  if(stats && !global.isServer) {
     stats.domElement.style.position = 'absolute';
     stats.domElement.style.left = '0px';
     stats.domElement.style.top = '0px'; 
@@ -167,10 +169,13 @@ gameCore.prototype.start = function() {
         renderer, 
         camera, 
         index
+      }), undefined),
+      other: new GamePlayer(Object.assign(this, {
+        scene, 
+        renderer, 
+        camera, 
+        index: ++index
       }), undefined)
-      // other: new gampePlayer({
-      //   scene, render, camera, ++index
-      // })
     };  
     this.ghosts = {
       server_pos_self: new GamePlayer(Object.assign(this, {
@@ -203,10 +208,13 @@ gameCore.prototype.start = function() {
         renderer, 
         camera, 
         index
-      }), undefined)//this.instance.player_host)
-      // other: new gampePlayer(this, this.instance.player_client{
-      //   scene, render, camera, ++index
-      // })
+      }), undefined), //this.instance.player_host)
+      other: new GamePlayer(Object.assign(this, {
+        scene, 
+        renderer, 
+        camera, 
+        index: ++index
+      }), undefined)//this.instance.player_client)
     };  
   }
   // physics integration value
@@ -220,7 +228,7 @@ gameCore.prototype.start = function() {
   this.createPhysicsSimulation();
   this.createTimer();
   console.log('done starting game');
-  if(!this.server) {
+  if(!this.server && !global.isServer) {
     //TODO define these functions
     this.clientCreateConfiguration();
     this.server_updates = [];
@@ -238,6 +246,13 @@ gameCore.prototype.start = function() {
     this.lastState = {};
   }
 };
+
+gameCore.prototype.stopUpdate = function() {
+  this.renderer.domElement.addEventListener('dblclick', null, false); //remove listener to render
+  this.scene.physijs.worker.terminate();
+  this.scene = null;
+  this.camera = null;
+}
 
 gameCore.prototype.clientCreateConfiguration = function() {
   this.show_help = false;             //Whether or not to draw the help text
@@ -313,6 +328,10 @@ gameCore.prototype.clientOnHostGame = function(data) {
   //this.players.self.info_color = ...
 
   this.clientResetPositions();
+};
+
+gameCore.prototype.clientResetPositions = function() {
+  console.log("TODO", "Client reset positions");
 };
 
 gameCore.prototype.clientOnPing = function(data) {
@@ -408,15 +427,22 @@ gameCore.prototype.onStep = function() {
   let { scene, camera, updateControls, renderer } = this;
   this._pdt = (new Date().getTime() - this._pdte)/1000.0;
   this._pdte = new Date().getTime();
-  if(!global.isServer) stats.begin();
-  if(updateControls) updateControls();
-  this.players.self.handleKeyPress();
-  renderer.render(scene, camera);
-  setTimeout(scene.step.bind(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) ), PHYSICS_FRAMERATE);
+  //scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) );
   if(global.isServer) {
+    this.animationId = renderer.render(scene, camera);
+    setTimeout(() => {
+      scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
+    }, PHYSICS_FRAMERATE);
     this.serverUpdatePhysics();
   }
   else {
+    stats.begin();
+    updateControls();
+    this.players.self.handleKeyPress();
+    this.animationId = renderer.render(scene, camera);
+    setTimeout(() => {
+      scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
+    }, PHYSICS_FRAMERATE);
     this.clientUpdatePhysics();
     stats.end();
   }
@@ -435,7 +461,7 @@ gameCore.prototype.createPhysicsSimulation = function() {
 };
 
 gameCore.prototype.update = function(time) {
-  this.dt = this.lastFrameTime ? (time - this.lastFrameTime/1000).fixed() : 0.016;
+  this.dt = this.lastFrameTime ? (time - this.lastFrameTime/1000) : 0.016;
   this.lastFrameTime = time;
   if(global.isServer) {
     this.serverUpdate();
@@ -486,5 +512,10 @@ function createServerScene(opts, THREE) {
     canvas
   };
 }
+
+function empty(elem) {
+  while (elem.lastChild) elem.removeChild(elem.lastChild);
+}
+
 
 module.exports = gameCore;
