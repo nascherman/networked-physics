@@ -404,6 +404,7 @@ gameCore.prototype.clientCreatePingTimer = function() {
 gameCore.prototype.serverUpdatePhysics = function() {
   // player one
   this.players.self.old_state = this.players.self.curr_state;
+  this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
   this.players.self.curr_state = this.players.self.player.position;
 
   // TODO player 2+
@@ -414,13 +415,18 @@ gameCore.prototype.serverUpdatePhysics = function() {
 };
 
 gameCore.prototype.clientUpdate = function() {
-  // do client update 
+  this.players.self.inputs.pop 
 };
 
 gameCore.prototype.clientUpdatePhysics = function() {
   this.players.self.state_time = this.local_time;
   this.players.self.old_state = this.players.self.curr_state;
+  this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
+
+  // this.players.self.processInputs();
+  // this.players.self.handleKeyPress();
   this.players.self.curr_state = this.players.self.player.position;
+  this.players.self.state_time = this.local_time;
 };
 
 gameCore.prototype.onStep = function() {
@@ -429,7 +435,7 @@ gameCore.prototype.onStep = function() {
   this._pdte = new Date().getTime();
   //scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) );
   if(global.isServer) {
-    this.animationId = renderer.render(scene, camera);
+    renderer.render(scene, camera);
     setTimeout(() => {
       scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
     }, PHYSICS_FRAMERATE);
@@ -438,12 +444,11 @@ gameCore.prototype.onStep = function() {
   else {
     stats.begin();
     updateControls();
-    this.players.self.handleKeyPress();
-    this.animationId = renderer.render(scene, camera);
+    this.clientUpdatePhysics();
+    renderer.render(scene, camera);
     setTimeout(() => {
       scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
     }, PHYSICS_FRAMERATE);
-    this.clientUpdatePhysics();
     stats.end();
   }
 };
