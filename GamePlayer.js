@@ -31,6 +31,7 @@ function GamePlayer(opts, playerInstance) {
   this.curr_state = this.old_state;
   this.state_time = new Date().getTime();
   this.inputs = [];
+  this.input_seq = 0;
 
   //could also set up initial position at this point; 
 }
@@ -63,7 +64,8 @@ const calcAngularMomentum = (initialRotation, cameraRotation, acceleration) => {
   }
 };
 
-GamePlayer.prototype.handleInputs = function(socket, local_time, input_seq) {
+// client pushes inputs to self
+GamePlayer.prototype.handleInputs = function(socket, local_time) {
   let input = [];
   this.client_has_input = false;
 
@@ -71,33 +73,32 @@ GamePlayer.prototype.handleInputs = function(socket, local_time, input_seq) {
     input.push('w');
   }
   else if(keys[65]) {
-    input.push('s');
+    input.push('a');
   }
   else if (keys[83]) {
-    input.push('a')
+    input.push('s')
   }
   else if(keys[68]) {
     input.push('d');
   }
-
   if(input.length) {
-    input_seq += 1;
+    this.input_seq++;
     this.inputs.push({
       inputs: input,
       time: local_time.toFixed(3),
-      seq: input_seq
+      seq: this.input_seq
     })
-
     var server_packet = 'i.';
     server_packet += input.join('-') + '.';
     server_packet += local_time.toFixed(3).replace('.','-') + '.';
-    server_packet += input_seq;
+    server_packet += this.input_seq;
     //Go
     socket.send(  server_packet  );
   }
 }
 
-GamePlayer.prototype.processInputs = function(input) {
+//server/client pops inputs returns positions to client on broadcast
+GamePlayer.prototype.processInputs = function() {
   // w 87, a 65, s 83, d 68
   let vec; 
   let box = this.player;
@@ -105,33 +106,55 @@ GamePlayer.prototype.processInputs = function(input) {
 
   if(this.inputs.length) {
     for(var i = 0; i < this.inputs.length; i++) {
-      if(!this.inputs[i].seq <= this.last_input_seq) break;
-      let inputs = this.inputs[i].inputs;
-      for(let i in inputs) {
-        let input = inputs[i];
-        const { angleAcceleration, rotationAcceleration }  = calcAngularMomentum(this.initialRotation * (180/Math.PI), zRotation * (180/Math.PI), this.player.acceleration)
-        if (input === 'w') {
-          vec = new THREE.Vector3(angleAcceleration, 0, rotationAcceleration);
-          box.physics.angular_velocity.add(vec);
+      if(this.inputs[i].seq > this.last_input_seq) {
+        let inputs = this.inputs[i].inputs;
+        for(let i in inputs) {
+          let input = inputs[i];
+          const { angleAcceleration, rotationAcceleration }  = calcAngularMomentum(this.initialRotation * (180/Math.PI), zRotation * (180/Math.PI), this.player.acceleration)
+          if (input === 'w') {    
+            box.physics.angular_velocity.set(angleAcceleration, 0, rotationAcceleration)
+          }
+          else if (input === 's') {            
+            box.physics.angular_velocity.set(-angleAcceleration, 0, -rotationAcceleration);
+          }
+          else if (input === 'a') {
+            box.physics.angular_velocity.set(rotationAcceleration, 0, -angleAcceleration);
+          }
+          else if (input === 'd') {
+            box.physics.angular_velocity.set(-rotationAcceleration, 0 , angleAcceleration);
+          }  
         }
-        else if (input === 's') {
-          vec = new THREE.Vector3(-angleAcceleration, 0, -rotationAcceleration);
-          box.physics.angular_velocity.add(vec);
-        }
-        else if (input === 'a') {
-          vec = new THREE.Vector3(rotationAcceleration, 0, -angleAcceleration);
-          box.physics.angular_velocity.add(vec);
-        }
-        else if (input === 'd') {
-          vec = new THREE.Vector3(-rotationAcceleration, 0 , angleAcceleration);
-          box.physics.angular_velocity.add(vec);
-        }  
       }
     }
-
     this.last_input_time = this.inputs[this.inputs.length - 1].time;
     this.last_input_seq = this.inputs[this.inputs.length -1].seq;
+    
   }
 };
+
+// naive change direct input
+GamePlayer.prototype.clientInput = function(input) {
+  let vec; 
+  let box = this.player;
+  let zRotation = this.camera.rotation.z;
+  const { angleAcceleration, rotationAcceleration }  = calcAngularMomentum(this.initialRotation * (180/Math.PI), zRotation * (180/Math.PI), this.player.acceleration)
+  if (keys[87]) {
+    vec = new THREE.Vector3(angleAcceleration, 0, rotationAcceleration);
+    box.physics.angular_velocity = vec;
+  }
+  else if (keys[83]) {
+    vec = new THREE.Vector3(-angleAcceleration, 0, -rotationAcceleration);
+    box.physics.angular_velocity = vec;
+  }
+  else if (keys[65]) {
+    vec = new THREE.Vector3(rotationAcceleration, 0, -angleAcceleration);
+    box.physics.angular_velocity = vec;
+  }
+  else if (keys[68]) {
+    vec = new THREE.Vector3(-rotationAcceleration, 0 , angleAcceleration);
+    box.physics.angular_velocity = vec;
+  }  
+}
+
 
 module.exports = GamePlayer;

@@ -26,14 +26,11 @@ sio.on('connection', function(socketClient) {
   // console.log(socketClient);
   socketClient.userid = UUID();
   socketClient.emit('onconnected', {id: socketClient.userid });
-  let currGame = new global.gameCore({
-    server: true
-  });
 
   gameServer.findGame(socketClient);
   
   socketClient.on('message', function(message) {
-    console.log(message, socketClient.userid);
+    gameServer.onMessage(socketClient, message);
   });
 
   socketClient.on('disconnect', function() {

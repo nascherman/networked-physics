@@ -7,9 +7,10 @@ require('./game-core.js');
 
 gameServer.log = function() {
   if(VERBOSE) console.log.apply(this, arguments);
-}
+};
 
 gameServer.fake_latency = 0;
+gameServer.game_count = 0;
 gameServer.local_time = 0;
 gameServer._dt = new Date().getTime();
 gameServer._dte = new Date().getTime();
@@ -28,12 +29,12 @@ gameServer.onMessage = (client, message) => {
       client,
       message
     });
-    setTimeout(() => {
-      if(gameServer.messages.length > 0) {
-        gameServer._onMessage( gameServer.messages[0].client, gameServer.messages[0].message);
-        gameServer.messages.splice(0, 1);
-      }
-    });
+    //setTimeout(() => {
+    if(gameServer.messages.length > 0) {
+      gameServer._onMessage( gameServer.messages[0].client, gameServer.messages[0].message);
+      gameServer.messages.splice(0, 1);
+    }
+    //});
   }
   else {
     gameServer._onMessage(client, message);
@@ -50,7 +51,7 @@ gameServer._onMessage = (client, message) => {
   if(messageType === 'i') {
     gameServer.onInput(client, messageParts);
   }
-  else if (messsageType === 'p') {
+  else if (messageType === 'p') {
     client.send('s.p.' + messageParts[1]);
   }
   else if (messageType === 'c') {
@@ -65,7 +66,15 @@ gameServer._onMessage = (client, message) => {
 
 // TODO should find way to broadcast physics prediction to other players
 gameServer.onInput = (client, parts) => {
-
+  //client.game.gameCore.players.self.processInputs();
+  //let pos = client.game.gameCore.players.self.player.position;
+  //let rot = client.game.gameCore.players.self.player.rotation;
+  let input_commands = parts[1];
+  let input_time = parts[2].replace('-', '.');
+  let input_seq = parts[3];
+  if(client && client.game && client.game.gameCore) {
+    client.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq);
+  }
 }
 
 gameServer.createGame = (player) => {
@@ -75,12 +84,12 @@ gameServer.createGame = (player) => {
     player_client: null,
     player_count: 1
   };
-
   gameServer.games[newGame.id] = newGame;
   gameServer.game_count++;
   newGame.gameCore = new gameCore(newGame);
   newGame.gameCore.start();
   newGame.gameCore.update( new Date().getTime());
+  newGame.gameCore.players.self.instance =  player;
   player.send('s.h.' + String(newGame.gameCore.local_time).replace('.', '-'));
   console.log('server host at  ' + newGame.gameCore.local_time);
   player.game = newGame;
@@ -103,7 +112,7 @@ gameServer.endGame = (gameid, userid) => {
       else {
         if(currGame.player_host) {
           currGame.player_host.send('s.e');
-          currgame.player_host.hosting = false;
+          currGame.player_host.hosting = false;
           gameServer.findGame(currGame.player_host);
         }
       }
@@ -117,11 +126,15 @@ gameServer.endGame = (gameid, userid) => {
   }
 }
 
-gameServer.startGame = (game) => {
+gameServer.startGame = (game, index) => {
   game.player_client.send('s.j.' + game.player_host.userid);
   game.player_client.game = game;
-
-  game.payer_client.send('s.r.' + String(game.gameCore.local_time).replace('.', '-'));
+  if(index >= 1) {
+    game.player_client.send('s.r.' + String(game.gameCore.local_time).replace('.', '-') + '.client');
+  }
+  else {
+    game.player_client.send('s.r.' + String(game.gameCore.local_time).replace('.', '-'));
+  }
   game.player_host.send('s.r.'+ String(game.gameCore.local_time).replace('.','-'));
   game.active = true;
 }
@@ -136,10 +149,10 @@ gameServer.findGame = (player) => {
       if(game_instance.player_count < 2) {
         joined_a_game = true;
         game_instance.player_client = player;
-        game_instance.gameCore.players.other.instance = player;
+        game_instance.gameCore.players.other.player = player;
         game_instance.player_count++;
-
-        gameServer.startGame(game_instance);
+        // fixed index to indicate player number
+        gameServer.startGame(game_instance, 1);
       }
     }
   }

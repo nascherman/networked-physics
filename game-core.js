@@ -1,8 +1,11 @@
-'use strict';
+
 global.THREE = require('three');
 var io = require('socket.io-client');
 var THREE = global.THREE;
 var Physijs = require('./libs/physi.js');
+
+const PLAYER_POS = new THREE.Vector3(5, 10, 0);
+const OTHER_POS = new THREE.Vector3(10, 10, 0);
 
 // const NO_STATS = false;
 
@@ -165,12 +168,16 @@ gameCore.prototype.start = function() {
   if(!this.server && !global.isServer) {
     this.players = {
       self: new GamePlayer(Object.assign(this, {
+        
         scene, 
         renderer, 
         camera, 
         index
       }), undefined),
       other: new GamePlayer(Object.assign(this, {
+        x: OTHER_POS.x,
+        y: OTHER_POS.y,
+        z: OTHER_POS.z,
         scene, 
         renderer, 
         camera, 
@@ -179,6 +186,9 @@ gameCore.prototype.start = function() {
     };  
     this.ghosts = {
       server_pos_self: new GamePlayer(Object.assign(this, {
+        x: PLAYER_POS.x,
+        y: PLAYER_POS.y,
+        z: PLAYER_POS.z,
         scene, 
         renderer, 
         camera, 
@@ -186,6 +196,9 @@ gameCore.prototype.start = function() {
         visible: false
       }), undefined),
       server_pos_other: new GamePlayer(Object.assign(this, {
+        x: OTHER_POS.x,
+        y: OTHER_POS.y,
+        z: OTHER_POS.z,
         scene, 
         renderer, 
         camera, 
@@ -193,6 +206,9 @@ gameCore.prototype.start = function() {
         visible: false
       }), undefined),
       pos_other: new GamePlayer(Object.assign(this, {
+        x: OTHER_POS.x,
+        y: OTHER_POS.y,
+        z: OTHER_POS.z,
         scene, 
         renderer, 
         camera, 
@@ -204,12 +220,18 @@ gameCore.prototype.start = function() {
   else {
     this.players = {
       self: new GamePlayer(Object.assign(this,  {
+        x: PLAYER_POS.x,
+        y: PLAYER_POS.y,
+        z: PLAYER_POS.z,
         scene, 
         renderer, 
         camera, 
         index
       }), undefined), //this.instance.player_host)
       other: new GamePlayer(Object.assign(this, {
+        x: OTHER_POS.x,
+        y: OTHER_POS.y,
+        z: OTHER_POS.z,
         scene, 
         renderer, 
         camera, 
@@ -234,7 +256,6 @@ gameCore.prototype.start = function() {
     this.server_updates = [];
     this.clientConnectToServer();
     this.clientCreatePingTimer();
-
     /* TODO set color with local storage here eg - maybe also create debug ui
       this.color = localStorage.getItem('color') || '#cc8822' ;
       localStorage.setItem('color', this.color);
@@ -260,7 +281,6 @@ gameCore.prototype.clientCreateConfiguration = function() {
   this.show_server_pos = false;       //Whether or not to show the server position
   this.show_dest_pos = false;         //Whether or not to show the interpolation goal
   this.client_predict = true;         //Whether or not the client is predicting input
-  this.input_seq = 0;                 //When predicting client inputs, we store the last input as a sequence number
   this.client_smoothing = true;       //Whether or not the client side prediction tries to smooth things out
   this.client_smooth = 25;            //amount of smoothing to apply to client update dest
   this.net_latency = 0.001;           //the latency between the client and the server (ping/2)
@@ -287,8 +307,21 @@ gameCore.prototype.clientOnDisconnect = function(data) {
   this.players.self.state = 'not-connected';
   this.players.self.online = false;
 
-  //set color or other stateful info
+   //set color or other stateful info
 };
+
+gameCore.prototype.clientOnServerUpdateReceived = function(data) {
+ // this.updateClientPositions(data);
+}
+
+gameCore.prototype.updateClientPositions = function(data) {
+  const { oPos, pPos, oRot, pRot } = data;
+  console.log('update pos');
+  this.players.self.player.position.set(pPos.x, pPos.y, pPos.z);
+  this.players.self.player.rotation.set(pRot._x, pRot._y, pRot._z);
+  this.players.other.player.position.set(oPos.x, oPos.y, oPos.z);
+  this.players.other.player.rotation.set(oRot._x, oRot._y, oRot._z);
+}
 
 // a function to reset the player and grid positions
 gameCore.prototype.clientResetPosition = function() {
@@ -296,6 +329,11 @@ gameCore.prototype.clientResetPosition = function() {
 };
 
 gameCore.prototype.clientOnReadyGame = function(data) {
+  if(data.split('.')[data.split('.').length -1] === 'client') {
+    let tempPlayer = this.players.other;
+    this.players.other = this.players.self;
+    this.players.self = tempPlayer;
+  } 
   let server_time = parseFloat(data.replace('-', '.'));
   // would need to update for > 2 players
   let player_host = this.players.self.host ? this.players.self : this.players.other;
@@ -344,14 +382,14 @@ gameCore.prototype.clientOnConnected = function(data) {
   // this.players.self.info_color = 0xff0000;
   this.players.self.state = 'connected';
   this.players.self.online = true;
+  console.log('on connected');
 };
 
 gameCore.prototype.clientOnNetMessage = function(data) {
   let commands = data.split('.');
   let command = commands[0];
   let subCommand = commands[1] || null;
-  let commandData = commands[2] || null;
-
+  let commandData = commands[3] ? commands[2] + '.' + commands[3] : commands[2] || null;
   switch(command) {
     case 's': //server message
       switch(subCommand) {
@@ -370,9 +408,6 @@ gameCore.prototype.clientOnNetMessage = function(data) {
         case 'p':
           this.clientOnPing(commandData);
           break;
-        // case 'c':
-        //   this.clientOnOtherClientColorChange(commandData);
-        //   break;
       }
       break;
   }
@@ -387,7 +422,7 @@ gameCore.prototype.clientConnectToServer = function() {
     this.players.self.state = 'connecting';
   });
   socket.on('disconnect', (d) => this.clientOnDisconnect(d));
-  socket.on('onserverupdate', (d) => this.clientOnServerUpdateReceived());
+  socket.on('onserverupdate', (d) => this.clientOnServerUpdateReceived(d));
   socket.on('onconnected', (d) => this.clientOnConnected(d));
   socket.on('error', (d) => this.clientOnDisconnect(d));
   socket.on('message', (d) => this.clientOnNetMessage(d));
@@ -404,27 +439,58 @@ gameCore.prototype.clientCreatePingTimer = function() {
 gameCore.prototype.serverUpdatePhysics = function() {
   // player one
   this.players.self.old_state = this.players.self.curr_state;
-  this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
+  // this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
+  this.players.self.processInputs();
   this.players.self.curr_state = this.players.self.player.position;
-
-  // TODO player 2+
-
   this.players.self.inputs = [];
+  // TODO player 2+
   //player 2 inputs
   // this.players.other.inputs = [];
 };
 
 gameCore.prototype.clientUpdate = function() {
-  this.players.self.inputs.pop 
+  // this.players.self.inputs.pop 
+
 };
+
+gameCore.prototype.handleServerInput = function(client, input, input_time, input_seq) {
+  var player_client =
+        (client.userid == this.players.self.player.userid) ?
+            this.players.self : this.players.other;
+  //Store the input on the player instance for processing in the physics loop
+  player_client.inputs.push({inputs:input, time:input_time, seq:input_seq});
+};
+
+gameCore.prototype.serverUpdate = function() {
+  this.server_time = this.local_time;
+  this.lastState = {
+    pPos: this.players.self.player.position,
+    pRot: this.players.self.player.rotation,
+    oPos: this.players.other.player.position,
+    oRot: this.players.other.player.rotation,
+    pSeq: this.players.self.last_input_seq,
+    oSeq: this.players.other.last_input_seq,
+    t: this.server_time
+  }
+  if(this.players.self.instance) {
+      this.players.self.instance.emit( 'onserverupdate', this.lastState );
+  }
+  //Send the snapshot to the 'client' player
+  if(this.players.other.instance) {
+      this.players.other.instance.emit( 'onserverupdate', this.lastState );
+  }
+}
 
 gameCore.prototype.clientUpdatePhysics = function() {
   this.players.self.state_time = this.local_time;
   this.players.self.old_state = this.players.self.curr_state;
-  this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
-
+  this.players.self.handleInputs(this.socket, this.local_time);
+  this.players.self.processInputs();
+  // update client screen before server response for smoothing
+  //this.players.self.clientInput();
+  
   // this.players.self.processInputs();
-  // this.players.self.handleKeyPress();
+  
   this.players.self.curr_state = this.players.self.player.position;
   this.players.self.state_time = this.local_time;
 };
@@ -435,6 +501,7 @@ gameCore.prototype.onStep = function() {
   this._pdte = new Date().getTime();
   //scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) );
   if(global.isServer) {
+   // console.log(this.players.self.player.position);
     renderer.render(scene, camera);
     setTimeout(() => {
       scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
@@ -476,22 +543,6 @@ gameCore.prototype.update = function(time) {
   }
 
   this.updateId =  window.requestAnimationFrame( this.update.bind(this), this.viewport);
-};
-
-gameCore.prototype.serverUpdate = function() {
-  this.server_time = this.local_time;
-
-  this.lastState = {
-  //  hp: this.players.self.pos
-  };
-
-  if(this.players.self.instance) {
-    this.players.self.instance.emit('onserverupdate', this.lastState);
-  }
-
-  if(this.players.other.instance) {
-    this.players.other.instance.emit('onserverupdate', this.lastState);
-  }
 };
 
 //server side we set the 'game_core' class to a global type, so that it can use it anywhere.
