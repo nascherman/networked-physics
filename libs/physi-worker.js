@@ -452,7 +452,6 @@
 			world_report[idx++] = rigid_body.angular_velocity.y;
 			world_report[idx++] = rigid_body.angular_velocity.z;
 		}
-
 		postReport( world_report );
 	}
 
@@ -595,7 +594,7 @@
 	(function() {
 		var handlers = {};
 		function handleMessage( message, handler ) {
-			handlers[message] = handler;
+    		handlers[message] = handler;
 		}
 		self.addEventListener(
 			'message',
@@ -615,6 +614,7 @@
 
 				if ( handlers.hasOwnProperty( type ) ) {
 					handlers[type]( parameters );
+
 				} else {
 					throw new Error( 'Physijs worker received unknown message type: ' + type );
 				}
@@ -1022,7 +1022,7 @@
 
 		handleMessage(
 			MESSAGE_TYPES.STEP_SIMULATION,
-			function( parameters ) {
+			function( parameters ) {       
 				world.step( parameters.time_delta, parameters.max_step );
 				reportWorld();
 				reportCollisions();

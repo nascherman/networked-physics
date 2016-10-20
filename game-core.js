@@ -7,7 +7,7 @@ var Physijs = require('./libs/physi.js');
 
 const PLAYER_POS = new THREE.Vector3(5, 10, 0);
 const OTHER_POS = new THREE.Vector3(10, 10, 0);
-
+const path = require('path');
 // const NO_STATS = false;
 
 if(!global.isServer) {
@@ -59,7 +59,7 @@ gameCore.prototype.initGrid = function(scene) {
 };
 
 gameCore.prototype.initScene = function() {
-  var scene = new Physijs.Scene('./libs/physi-worker.js');
+  var scene = new Physijs.Scene(path.join(__dirname, '/libs/physi-worker.js'));
   var ambient = new THREE.AmbientLight(0xffffff, 1.5);
 
   var opts = {
@@ -452,7 +452,6 @@ gameCore.prototype.serverUpdatePhysics = function() {
 
 gameCore.prototype.clientUpdate = function() {
   // this.players.self.inputs.pop 
-
 };
 
 gameCore.prototype.handleServerInput = function(client, input, input_time, input_seq, host) {
@@ -499,7 +498,6 @@ gameCore.prototype.onStep = function() {
   this._pdt = (new Date().getTime() - this._pdte)/1000.0;
   this._pdte = new Date().getTime();
   if(global.isServer) {
-   // console.log(this.players.self.player.position);
     renderer.render(scene, camera);
     setTimeout(() => {
       scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
@@ -539,7 +537,7 @@ gameCore.prototype.update = function(time) {
   else {
     this.clientUpdate();
   }
-  this.updateId =  window.requestAnimationFrame( this.update.bind(this), this.viewport);
+  setTimeout( this.update.bind(this), 60/1000 );
 };
 
 //server side we set the 'game_core' class to a global type, so that it can use it anywhere.

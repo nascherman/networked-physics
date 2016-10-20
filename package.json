@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start-client": "budo client.js:bundle.js --dir static --debug --live",
-    "start-server": "forever -w server.js",
+    "start-server": "export IS_HEADLESS=true; forever -w server.js",
     "start": "npm run start-server & npm run start-client"
   },
   "author": "nascherman",
@@ -24,15 +24,19 @@
     "gl": "^4.0.2",
     "lerp": "^1.0.3",
     "mock-browser": "^0.92.12",
+    "net": "^1.0.2",
     "node-uuid": "^1.4.7",
     "physijs-browserify": "0.0.2",
-    "raf-loop": "^1.1.3",
+    "raf": "^3.3.0",
     "scene-template": "^1.0.7",
     "socket.io": "^1.5.0",
     "stats-js": "^1.0.0-alpha1",
     "three": "^0.81.2",
+    "tiny-worker": "^1.1.7",
     "utf-8-validate": "^1.2.1",
-    "webworker-threads": "^0.7.8"
+    "webworker": "^0.8.4",
+    "webworker-threads": "^0.7.8",
+    "workerjs": "^0.1.1"
   },
   "repository": {
     "type": "git",

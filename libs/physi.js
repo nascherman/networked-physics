@@ -2,7 +2,7 @@
     typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
     typeof define === 'function' && define.amd ? define(factory) :
     global.physijs = factory();
-}(this, function () { 'use strict';
+}(this, function () { 
 
     var MESSAGE_TYPES = {
       REPORTS: {
@@ -556,6 +556,7 @@
     }
 
     function processWorldReport( report ) {
+      
       var simulation_ticks = report[1];
       var rigid_body_count = report[2];
 
@@ -593,7 +594,8 @@
     }
 
     function initializeWorker( worker_script_location, world_config ) {
-      this.physijs.worker = new Worker( worker_script_location );
+      this.physijs.worker = new Worker( worker_script_location, true );
+      
       this.physijs.worker.addEventListener(
         'message',
         function(e) {
@@ -601,13 +603,19 @@
           var type;
           var parameters;
 
-          if ( data instanceof Float32Array ) {
+          if ( data instanceof Float32Array || data instanceof Array) {
             type = data[0];
             parameters = data;
-          } else {
+          } else if (data.type) {
             data = data || {};
             type = data.type;
             parameters = data.parameters;
+          }
+          else {
+            let tempArr = []
+            Object.keys(data).forEach((d) => tempArr.push(d));
+            type = data[0];
+            parameters = data;
           }
 
           if ( this.physijs.handlers.hasOwnProperty( type ) ) {
@@ -1001,7 +1009,6 @@
       if ( this.physijs.is_stepping === true ) {
         throw new Error( 'Physijs: scene is already stepping, cannot call step() until it\'s finished' );
       }
-
       this.physijs.is_stepping = true;
       this.physijs.onStep = onStep;
 

@@ -5,9 +5,9 @@ var UUID = require('node-uuid');
 let MockBrowser = require('mock-browser').mocks.MockBrowser;
 window = MockBrowser.createWindow();
 document = MockBrowser.createDocument();
-// global.Worker = require('webworker-threads').Worker;
+// if(process.env.IS_HEADLESS) global.Worker = require('tiny-worker');
+global.Worker = require('tiny-worker');
 global.getComputedStyle = document.defaultView.getComputedStyle;
-
 global.isServer = true;
 
 var app = require('express')();
