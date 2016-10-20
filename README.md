@@ -8,7 +8,7 @@ To develop, install deps
 ``` npm i ```
 and run
 ``` npm run start ```
-this will launch the node server with webgl shims etc. as well as the http server for clients. To test multiplay, open up to browser window pages and move the figures around with W, A, S, D, the changes for each player should translate onto the other player's screen
+this will launch the node server with webgl shims etc. as well as the http server for clients. To test multiplay, open up two browser window pages and move the figures around with W, A, S, D, the changes for each player should translate onto the other player's screen
 
 ## TODO
 - Entity interpolation
