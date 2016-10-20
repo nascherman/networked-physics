@@ -311,16 +311,11 @@ gameCore.prototype.clientOnDisconnect = function(data) {
 };
 
 gameCore.prototype.clientOnServerUpdateReceived = function(data) {
-  if(!this.oldData) this.oldData = data;
-  if(diff(data.position,this.oldData.position) === undefined) return;
-  this.oldData = data;
-  console.log(data);
- // this.updateClientPositions(data);
+  this.updateClientPositions(data);
 }
 
 gameCore.prototype.updateClientPositions = function(data) {
   const { oPos, pPos, oRot, pRot } = data.position;
-  console.log('update pos');
   this.players.self.player.position.set(pPos.x, pPos.y, pPos.z);
   this.players.self.player.rotation.set(pRot._x, pRot._y, pRot._z);
   this.players.other.player.position.set(oPos.x, oPos.y, oPos.z);
@@ -368,7 +363,6 @@ gameCore.prototype.clientOnHostGame = function(data) {
   this.players.self.state = 'hosting.waiting for player';
   // maybe set color
   //this.players.self.info_color = ...
-
   this.clientResetPositions();
 };
 
@@ -445,8 +439,12 @@ gameCore.prototype.serverUpdatePhysics = function() {
   this.players.self.old_state = this.players.self.curr_state;
   // this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
   this.players.self.processInputs();
+  this.players.other.processInputs();
   this.players.self.curr_state = this.players.self.player.position;
   this.players.self.inputs = [];
+
+  this.players.other.curr_state = this.players.other.player.position;
+  this.players.other.inputs = [];
   // TODO player 2+
   //player 2 inputs
   // this.players.other.inputs = [];
@@ -458,11 +456,7 @@ gameCore.prototype.clientUpdate = function() {
 };
 
 gameCore.prototype.handleServerInput = function(client, input, input_time, input_seq, host) {
-  var player_client = this.players.self;
-       // (client.userid == this.players.self.player.userid) ?
-       //     this.players.self : this.players.other;
-  //Store the input on the player instance for processing in the physics loop
-  if(host) player_client.inputs.push({inputs:input, time:input_time, seq:input_seq });
+  if(host) this.players.self.inputs.push({inputs:input, time:input_time, seq:input_seq });
   else this.players.other.inputs.push({inputs: input, time:input_time, seq:input_seq })
 };
 

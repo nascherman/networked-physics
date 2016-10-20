@@ -44,11 +44,12 @@ gameServer.onMessage = (client, message) => {
 gameServer._onMessage = (client, message) => {
   let messageParts = message.split('.');
   let messageType = messageParts[0];
+  let isHost = client.game.player_host.userid === client.userid
   let otherClient = (client.game.player_host.userid === client.userid) ?
     client.game.player_client : client.game.player_host;
 
   if(messageType === 'i') {
-    gameServer.onInput(client, messageParts);
+    gameServer.onInput(client, messageParts, isHost);
   }
   else if (messageType === 'p') {
     client.send('s.p.' + messageParts[1]);
@@ -64,19 +65,14 @@ gameServer._onMessage = (client, message) => {
 }
 
 // TODO should find way to broadcast physics prediction to other players
-gameServer.onInput = (client, parts) => {
+gameServer.onInput = (client, parts, isHost) => {
   //client.game.gameCore.players.self.processInputs();
   //let pos = client.game.gameCore.players.self.player.position;
   //let rot = client.game.gameCore.players.self.player.rotation;
   let input_commands = parts[1];
   let input_time = parts[2].replace('-', '.');
   let input_seq = parts[3];
-  if(client && client.game && client.game.gameCore) {
-    client.game.player_host.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq, true);
-  }
-  // if(client && client.game && client.game && client.game.player_client) {
-  //   client.game.player_client.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq, false);
-  // }
+  client.game.player_host.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq, isHost);
 }
 
 gameServer.createGame = (player) => {
@@ -151,7 +147,7 @@ gameServer.findGame = (player) => {
         joined_a_game = true;
         game_instance.player_client = player;
         game_instance.gameCore.players.other.player_client = player;
-        game_instance.gameCore.players.other.player = player;
+    //    game_instance.gameCore.players.other.player = player;
         game_instance.player_count++;
         // fixed index to indicate player number
         gameServer.startGame(game_instance, 1);
