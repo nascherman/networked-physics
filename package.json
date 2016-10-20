@@ -17,6 +17,7 @@
   "dependencies": {
     "bufferutil": "^1.2.1",
     "cors": "^2.8.1",
+    "deep-diff": "^0.3.4",
     "domready": "^1.0.8",
     "express": "^4.14.0",
     "forever": "^0.15.2",

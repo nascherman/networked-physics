@@ -44,7 +44,6 @@ gameServer.onMessage = (client, message) => {
 gameServer._onMessage = (client, message) => {
   let messageParts = message.split('.');
   let messageType = messageParts[0];
-
   let otherClient = (client.game.player_host.userid === client.userid) ?
     client.game.player_client : client.game.player_host;
 
@@ -73,8 +72,11 @@ gameServer.onInput = (client, parts) => {
   let input_time = parts[2].replace('-', '.');
   let input_seq = parts[3];
   if(client && client.game && client.game.gameCore) {
-    client.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq);
+    client.game.player_host.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq, true);
   }
+  // if(client && client.game && client.game && client.game.player_client) {
+  //   client.game.player_client.game.gameCore.handleServerInput(client, input_commands, input_time, input_seq, false);
+  // }
 }
 
 gameServer.createGame = (player) => {
@@ -144,11 +146,11 @@ gameServer.findGame = (player) => {
   if(gameServer.game_count) {
     let joined_a_game = false;
     for(let gameid in gameServer.games) {
-      if(!gameServer.games.hasOwnProperty(gameid)) continue;
       let game_instance = gameServer.games[gameid];
       if(game_instance.player_count < 2) {
         joined_a_game = true;
         game_instance.player_client = player;
+        game_instance.gameCore.players.other.player_client = player;
         game_instance.gameCore.players.other.player = player;
         game_instance.player_count++;
         // fixed index to indicate player number

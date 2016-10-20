@@ -93,7 +93,7 @@ GamePlayer.prototype.handleInputs = function(socket, local_time) {
     server_packet += local_time.toFixed(3).replace('.','-') + '.';
     server_packet += this.input_seq;
     //Go
-    socket.send(  server_packet  );
+    socket.send(server_packet);
   }
 }
 
