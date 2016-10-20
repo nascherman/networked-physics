@@ -7,6 +7,7 @@ var Physijs = require('./libs/physi.js');
 
 const PLAYER_POS = new THREE.Vector3(5, 10, 0);
 const OTHER_POS = new THREE.Vector3(10, 10, 0);
+const STEP_RATION = 10; //the roughly ratio of server updates to client updates
 const path = require('path');
 // const NO_STATS = false;
 
@@ -494,6 +495,7 @@ gameCore.prototype.clientUpdatePhysics = function() {
 };
 
 gameCore.prototype.onStep = function() {
+
   let { scene, camera, updateControls, renderer } = this;
   this._pdt = (new Date().getTime() - this._pdte)/1000.0;
   this._pdte = new Date().getTime();
