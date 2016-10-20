@@ -19,7 +19,6 @@ if(!global.isServer) {
 } 
 
 var createScene = require('scene-template');
-var createLoop = require('raf-loop');
 var GamePlayer = require('./GamePlayer');
 var createBox = require('./createObj').createBox;
 var createSphere = require('./createObj').createSphere;
@@ -31,8 +30,8 @@ const MARGIN = 2.5;
 const GRID_SIZE = 1;
 const SEGMENTS = 10;
 const PHYSICS_FRAMERATE = 1000 / 60;
-
 const SERVER_URL = 'http://localhost';
+//const SERVER_URL = 'http://www.nickscherman.com';
 const SERVER_PORT = 4004;
 
 global.keys = [];
