@@ -1,4 +1,3 @@
-
 global.THREE = require('three');
 var io = require('socket.io-client');
 const diff = require('deep-diff');
@@ -9,7 +8,7 @@ const PLAYER_POS = new THREE.Vector3(5, 10, 0);
 const OTHER_POS = new THREE.Vector3(10, 10, 0);
 const STEP_RATION = 10; //the roughly ratio of server updates to client updates
 const path = require('path');
-// const NO_STATS = false;
+const lerp = require('lerp');
 
 if(!global.isServer) {
   var loader = new THREE.TextureLoader();
@@ -25,13 +24,16 @@ var createSphere = require('./createObj').createSphere;
 
 const PLANE_DEPTH = 25;
 const PLANE_WIDTH = 25;
-const SPACING = 3;
+const SPACING = 5;
 const MARGIN = 2.5;
 const GRID_SIZE = 1;
 const SEGMENTS = 10;
 const PHYSICS_FRAMERATE = 1000 / 60;
+const SERVER_PHYSICS_FRAMERATE = 1000 / 60;
+
 const SERVER_URL = 'http://localhost';
-//const SERVER_URL = 'http://www.nickscherman.com';
+// const SERVER_URL = '192.168.0.34';
+// const SERVER_URL = 'www.nickscherman.com';
 const SERVER_PORT = 4004;
 
 global.keys = [];
@@ -166,6 +168,8 @@ gameCore.prototype.start = function() {
   let { scene ,renderer, camera, updateControls } = this;
   // two players for now
   let index = 0;
+  this.clientTickIndex = 0;   
+  this.serverTickIndex = 0;
   if(!this.server && !global.isServer) {
     this.players = {
       self: new GamePlayer(Object.assign(this, {     
@@ -277,12 +281,9 @@ gameCore.prototype.stopUpdate = function() {
 
 gameCore.prototype.clientCreateConfiguration = function() {
   this.show_help = false;             //Whether or not to draw the help text
-  this.naive_approach = false;        //Whether or not to use the naive approach
-  this.show_server_pos = false;       //Whether or not to show the server position
-  this.show_dest_pos = false;         //Whether or not to show the interpolation goal
-  this.client_predict = true;         //Whether or not the client is predicting input
-  this.client_smoothing = true;       //Whether or not the client side prediction tries to smooth things out
-  this.client_smooth = 25;            //amount of smoothing to apply to client update dest
+  // this.client_predict = true;         //Whether or not the client is predicting input
+  // this.client_smoothing = true;       //Whether or not the client side prediction tries to smooth things out
+  // this.client_smooth = 25;            //amount of smoothing to apply to client update dest
   this.net_latency = 0.001;           //the latency between the client and the server (ping/2)
   this.net_ping = 0.001;              //The round trip time from here to the server,and back
   this.last_ping_time = 0.001;        //The time we last sent a ping
@@ -295,7 +296,7 @@ gameCore.prototype.clientCreateConfiguration = function() {
   this.client_time = 0.01;            //Our local 'clock' based on server time - client interpolation(net_offset).
   this.server_time = 0.01;            //The time the server reported it was at, last we heard from it
   this.dt = 0.016;                    //The time that the last frame took to run
-  this.fps = 0;                       //The current instantaneous fps (1/this.dt)
+  this.fps = 0;                    //The current instantaneous fps (1/this.dt)
   this.fps_avg_count = 0;             //The number of samples we have taken for fps_avg
   this.fps_avg = 0;                   //The current average fps displayed in the debug UI
   this.fps_avg_acc = 0;               //The accumulation of the last avgcount fps samples
@@ -310,16 +311,69 @@ gameCore.prototype.clientOnDisconnect = function(data) {
    //set color or other stateful info
 };
 
+var tickIndex = 0;
+gameCore.prototype.serverUpdate = function() {
+  this.server_time = this.local_time;
+  this.lastState = {
+    position: {
+      pPos: this.players.self.player.position,
+      pA: this.players.self.player.physics.angular_velocity,
+      pL: this.players.self.player.physics.linear_velocity,
+      pRot: this.players.self.player.rotation,
+      oPos: this.players.other.player.position,
+      oRot: this.players.other.player.rotation,
+      oA: this.players.other.player.physics.angular_velocity,
+      oL: this.players.other.player.physics.linear_velocity,
+      pSeq: this.players.self.last_input_seq,
+      oSeq: this.players.other.last_input_seq,
+      grid: ++tickIndex > 9  ? processGridData(this.grid) : undefined
+    },
+    tickIndex: this.serverTickIndex,
+    t: this.server_time
+  }
+  if(tickIndex > 9) tickIndex = 0;
+  if(this.players.self.player) {
+      this.players.self.player_host.emit( 'onserverupdate', this.lastState );
+  }
+  if(this.players.other.player_client) {
+      this.players.other.player_client.emit( 'onserverupdate', this.lastState );
+  }
+
+  function processGridData(grid) {
+    return grid.map((item) => {
+      const { id, position, rotation } = item;
+      return {
+        id,
+        position,
+        rotation
+      };
+    });
+  }
+}
+
 gameCore.prototype.clientOnServerUpdateReceived = function(data) {
   this.updateClientPositions(data);
 }
 
 gameCore.prototype.updateClientPositions = function(data) {
-  const { oPos, pPos, oRot, pRot } = data.position;
+  this.server_time = data.t;
+  const { oPos, pPos, oRot, pRot, pA, pL, oA, oL, grid } = data.position;
   this.players.self.player.position.set(pPos.x, pPos.y, pPos.z);
   this.players.self.player.rotation.set(pRot._x, pRot._y, pRot._z);
+  this.players.self.player.physics.angular_velocity.set(pA.x, pA.y, pA.z);
+  this.players.self.player.physics.linear_velocity.set(pL.x, pL.y, pL.z);
   this.players.other.player.position.set(oPos.x, oPos.y, oPos.z);
   this.players.other.player.rotation.set(oRot._x, oRot._y, oRot._z);
+  this.players.other.player.physics.angular_velocity.set(oA.x, oA.y, oA.z);
+  this.players.other.player.physics.linear_velocity.set(oL.x, oL.y, oL.z);
+  this.updateSceneryPosition(grid);
+}
+
+gameCore.prototype.updateSceneryPosition = function(data) {
+  data ? data.forEach((item, i) => {
+    this.grid[i].position.set(item.position.x, item.position.y, item.position.z);
+    this.grid[i].rotation.set(item.rotation._x, item.rotation._y, item.rotation._z);
+  }) : null;
 }
 
 // a function to reset the player and grid positions
@@ -434,10 +488,10 @@ gameCore.prototype.clientCreatePingTimer = function() {
   }, 1000);
 };
 
+
 gameCore.prototype.serverUpdatePhysics = function() {
   // player one
   this.players.self.old_state = this.players.self.curr_state;
-  // this.players.self.handleInputs(this.socket, this.local_time, this.input_seq);
   this.players.self.processInputs();
   this.players.other.processInputs();
   this.players.self.curr_state = this.players.self.player.position;
@@ -445,56 +499,25 @@ gameCore.prototype.serverUpdatePhysics = function() {
 
   this.players.other.curr_state = this.players.other.player.position;
   this.players.other.inputs = [];
-  // TODO player 2+
-  //player 2 inputs
-  // this.players.other.inputs = [];
-};
-
-gameCore.prototype.clientUpdate = function() {
-  // this.players.self.inputs.pop 
+  this.serverTickIndex++;
 };
 
 gameCore.prototype.handleServerInput = function(client, input, input_time, input_seq, host) {
   if(host) this.players.self.inputs.push({inputs:input, time:input_time, seq:input_seq });
-  else this.players.other.inputs.push({inputs: input, time:input_time, seq:input_seq })
+   else this.players.other.inputs.push({inputs: input, time:input_time, seq:input_seq })
 };
-
-gameCore.prototype.serverUpdate = function() {
-  this.server_time = this.local_time;
-  this.lastState = {
-    position: {
-      pPos: this.players.self.player.position,
-      pRot: this.players.self.player.rotation,
-      oPos: this.players.other.player.position,
-      oRot: this.players.other.player.rotation,
-      pSeq: this.players.self.last_input_seq,
-      oSeq: this.players.other.last_input_seq
-    },
-    t: this.server_time
-  }
-  if(this.players.self.player) {
-      this.players.self.player_host.emit( 'onserverupdate', this.lastState );
-  }
-  if(this.players.other.player_client) {
-      this.players.other.player_client.emit( 'onserverupdate', this.lastState );
-  }
-}
 
 gameCore.prototype.clientUpdatePhysics = function() {
   this.players.self.state_time = this.local_time;
   this.players.self.old_state = this.players.self.curr_state;
   this.players.self.handleInputs(this.socket, this.local_time);
   this.players.self.processInputs();
-  this.players.other.processInputs();
-  // update client screen before server response for smoothing
-  //this.players.self.clientInput();
-  // this.players.self.processInputs();
   this.players.self.curr_state = this.players.self.player.position;
   this.players.self.state_time = this.local_time;
+  this.clientTickIndex++;
 };
 
 gameCore.prototype.onStep = function() {
-
   let { scene, camera, updateControls, renderer } = this;
   this._pdt = (new Date().getTime() - this._pdte)/1000.0;
   this._pdte = new Date().getTime();
@@ -502,7 +525,7 @@ gameCore.prototype.onStep = function() {
     renderer.render(scene, camera);
     setTimeout(() => {
       scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
-    }, PHYSICS_FRAMERATE);
+    }, SERVER_PHYSICS_FRAMERATE);
     this.serverUpdatePhysics();
   }
   else {
@@ -522,7 +545,7 @@ gameCore.prototype.createTimer = function() {
     this._dt = new Date().getTime() - this._dte;
     this._dte = new Date().getTime();
     this.local_time += this._dt/1000.0;
-  }.bind(this), 4); 
+  }.bind(this), 4);
 };
 
 gameCore.prototype.createPhysicsSimulation = function() {

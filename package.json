@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start-client": "budo client.js:bundle.js --dir static --debug --live",
+    "start-client": "budo client.js:bundle.js --dir static --debug --live  ",
     "start-server": "export IS_HEADLESS=true; forever -w server.js",
     "start-headless-server": "xvfb-run -s '-ac -screen 0 16x9x24' npm run start-server",
     "start": "npm run start-server & npm run start-client"
