@@ -28,8 +28,8 @@ const SPACING = 5;
 const MARGIN = 2.5;
 const GRID_SIZE = 1;
 const SEGMENTS = 10;
-const PHYSICS_FRAMERATE = 1000 / 60;
-const SERVER_PHYSICS_FRAMERATE = 1000 / 60;
+const PHYSICS_FRAMERATE = 1000 / 30;
+const SERVER_PHYSICS_FRAMERATE = 1000 / 30;
 
 const SERVER_URL = 'http://localhost';
 // const SERVER_URL = '192.168.0.34';
@@ -42,6 +42,7 @@ function gameCore(opts) {
   Object.assign(this, opts);
   this.server = this.instance !== undefined;
   this.grid = [];
+  this.position_queue = [];
 }
 
 gameCore.prototype.initGrid = function(scene) {
@@ -82,7 +83,7 @@ gameCore.prototype.initScene = function() {
       ambient
     ]
   };
-  if(global.isServer) opts.renderer.context = require('gl')(100, 100);
+  if(global.isServer) opts.renderer.context = require('gl')(1, 1);
   // Create our basic ThreeJS application
   if(!global.isServer) {
     var {
@@ -90,6 +91,10 @@ gameCore.prototype.initScene = function() {
       camera,
       updateControls
     } = createScene(opts, THREE);  
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMapSoft = true;
+    window.scene = scene;
+    renderer.setClearColor(0xffffff);
   } 
   else {
     var {
@@ -103,12 +108,6 @@ gameCore.prototype.initScene = function() {
   this.camera = camera;
   this.scene = scene;
   this.updateControls = updateControls;
-
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMapSoft = true;
-  window.scene = scene;
-  // camera.add(light);
-  renderer.setClearColor(0xffffff);
   
   let floorMaterial;
   if(global.isServer) {
@@ -168,8 +167,6 @@ gameCore.prototype.start = function() {
   let { scene ,renderer, camera, updateControls } = this;
   // two players for now
   let index = 0;
-  this.clientTickIndex = 0;   
-  this.serverTickIndex = 0;
   if(!this.server && !global.isServer) {
     this.players = {
       self: new GamePlayer(Object.assign(this, {     
@@ -328,7 +325,6 @@ gameCore.prototype.serverUpdate = function() {
       oSeq: this.players.other.last_input_seq,
       grid: ++tickIndex > 9  ? processGridData(this.grid) : undefined
     },
-    tickIndex: this.serverTickIndex,
     t: this.server_time
   }
   if(tickIndex > 9) tickIndex = 0;
@@ -352,10 +348,13 @@ gameCore.prototype.serverUpdate = function() {
 }
 
 gameCore.prototype.clientOnServerUpdateReceived = function(data) {
-  this.updateClientPositions(data);
+  this.position_queue.push(data);
 }
 
-gameCore.prototype.updateClientPositions = function(data) {
+gameCore.prototype.updateClientPositions = function() {
+  if(this.position_queue.length <= 0) return;
+  let data = this.position_queue[0];
+  this.position_queue.pop();
   this.server_time = data.t;
   const { oPos, pPos, oRot, pRot, pA, pL, oA, oL, grid } = data.position;
   this.players.self.player.position.set(pPos.x, pPos.y, pPos.z);
@@ -499,7 +498,6 @@ gameCore.prototype.serverUpdatePhysics = function() {
 
   this.players.other.curr_state = this.players.other.player.position;
   this.players.other.inputs = [];
-  this.serverTickIndex++;
 };
 
 gameCore.prototype.handleServerInput = function(client, input, input_time, input_seq, host) {
@@ -514,7 +512,6 @@ gameCore.prototype.clientUpdatePhysics = function() {
   this.players.self.processInputs();
   this.players.self.curr_state = this.players.self.player.position;
   this.players.self.state_time = this.local_time;
-  this.clientTickIndex++;
 };
 
 gameCore.prototype.onStep = function() {
@@ -522,15 +519,17 @@ gameCore.prototype.onStep = function() {
   this._pdt = (new Date().getTime() - this._pdte)/1000.0;
   this._pdte = new Date().getTime();
   if(global.isServer) {
-    renderer.render(scene, camera);
+    // renderer.render(scene, camera);
+    this.serverUpdatePhysics();
     setTimeout(() => {
       scene.step.call(scene, PHYSICS_FRAMERATE / 1000, undefined, this.onStep.bind(this) )
-    }, SERVER_PHYSICS_FRAMERATE);
-    this.serverUpdatePhysics();
+    }, PHYSICS_FRAMERATE);
+    
   }
   else {
     stats.begin();
     updateControls();
+    this.updateClientPositions();
     this.clientUpdatePhysics();
     renderer.render(scene, camera);
     setTimeout(() => {
@@ -545,7 +544,8 @@ gameCore.prototype.createTimer = function() {
     this._dt = new Date().getTime() - this._dte;
     this._dte = new Date().getTime();
     this.local_time += this._dt/1000.0;
-  }.bind(this), 4);
+    // console.log(this.local_time);
+  }.bind(this), 40);
 };
 
 gameCore.prototype.createPhysicsSimulation = function() {
@@ -572,12 +572,10 @@ if(global.isServer) {
 function createServerScene(opts, THREE) {
   const assign = require('object-assign');
   const dpr = window.devicePixelRatio;
-  const renderer = new THREE.WebGLRenderer(assign({
-    antialias: true // default enabled
-  }, opts.renderer));
+  const renderer = new THREE.WebGLRenderer(assign({}, opts.renderer));
   const canvas = renderer.domElement;
   const camera = new THREE.PerspectiveCamera(60, 1, 0.01, 1000);
-  const target = new THREE.Vector3();
+  // const target = new THREE.Vector3();
   // 3D scene
   const scene = new THREE.Scene();
   return {
